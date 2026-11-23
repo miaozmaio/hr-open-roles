@@ -1,0 +1,147 @@
+name: 岗位发布校验
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: issue-guard-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    if: ${{ github.event.issue.pull_request == null }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 校验发布权限 / 必填字段 / 职位详情
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issue = context.payload.issue;
+            const num = issue.number;
+            const body = issue.body || '';
+            const labels = (issue.labels || []).map(l => (typeof l === 'string' ? l : l.name));
+            const has = n => labels.includes(n);
+
+            const say = b => github.rest.issues.createComment({ owner, repo, issue_number: num, body: b });
+            const tag = async ls => {
+              try { await github.rest.issues.addLabels({ owner, repo, issue_number: num, labels: ls }); }
+              catch (e) { core.warning(`addLabels failed: ${e.message}`); }
+            };
+            const untag = async n => {
+              try { await github.rest.issues.removeLabel({ owner, repo, issue_number: num, name: n }); }
+              catch (e) { /* label not present */ }
+            };
+            const setState = (state, reason) =>
+              github.rest.issues.update({ owner, repo, issue_number: num, state, state_reason: reason });
+
+            // ── 1. 发布权限：仅仓库 owner ────────────────────────────────
+            if ((issue.user.login || '').toLowerCase() !== owner.toLowerCase()) {
+              if (!has('unauthorized')) {
+                await tag(['unauthorized', 'invalid']);
+                await say([
+                  '## ⛔ 发布失败：无发布权限',
+                  '',
+                  `@${issue.user.login} 很抱歉，**本仓库只允许仓库 owner（@${owner}）发布岗位**。`,
+                  '',
+                  '其他朋友依然非常欢迎：',
+                  '- 在任意岗位 Issue 下 **评论提问 / 投递**；',
+                  '- 想自荐或推荐岗位，请到 [我的主页仓库](https://github.com/' + owner + '/' + owner + '/issues) 开 Issue。',
+                  '',
+                  '本条 Issue 已自动关闭并锁定。',
+                  '',
+                  '<sub>由 issue-guard 自动发出</sub>'
+                ].join('\n'));
+              }
+              await setState('closed', 'not_planned');
+              try {
+                await github.rest.issues.lock({ owner, repo, issue_number: num, lock_reason: 'spam' });
+              } catch (e) { core.warning(`lock failed: ${e.message}`); }
+              return;
+            }
+
+            // ── 2. 字段解析 ──────────────────────────────────────────────
+            const clean = v => (v || '').replace(/<!--[\s\S]*?-->/g, '').trim();
+            const pick = name => {
+              const m = body.match(new RegExp('###[ \\t]*' + name + '[ \\t]*\\n([\\s\\S]*?)(?=\\n###[ \\t]|\\n*$)'));
+              return m ? clean(m[1]) : null;
+            };
+            const isBlank = v => !v || /^(_?no response_?|n\/a|-)$/i.test(v || '');
+
+            const FIELDS = ['岗位名称', '公司', '招聘方向', '工作地点', '薪资范围', '岗位职责', '任职要求', '职位详情', '投递方式'];
+            const problems = [];
+
+            for (const f of FIELDS) {
+              if (isBlank(pick(f))) problems.push(`缺少或未填写 **${f}**（需使用 \`### ${f}\` 标题）`);
+            }
+
+            // ── 3. 招聘方向必须在支持范围内 ───────────────────────────────
+            const dir = pick('招聘方向') || '';
+            const DIR_MAP = [
+              ['quant', /(量化|quant|qd\b|做市|market ?making|交易系统|低延迟)/i],
+            ];
+            if (!isBlank(dir) && !DIR_MAP.some(([, re]) => re.test(dir))) {
+              problems.push('**招聘方向** 不在支持范围：只能是 `量化`（或其中的具体子方向）');
+            }
+
+            // ── 4. 职位详情必须写清（不要求链接）────────────────────────
+            const detail = pick('职位详情') || '';
+            if (!isBlank(detail) && detail.replace(/\s/g, '').length < 15) {
+              problems.push('**职位详情** 太简略：请写清团队/业务、职级、核心职责与关键要求（不必附链接）');
+            }
+
+            // ── 5. 职责与要求需逐条列出 ──────────────────────────────────
+            for (const f of ['岗位职责', '任职要求']) {
+              const v = pick(f) || '';
+              if (!isBlank(v) && v.split('\n').filter(l => l.trim().length > 1).length < 1) {
+                problems.push(`**${f}** 需逐条列出（每条以 \`-\` 开头）`);
+              }
+            }
+
+            // ── 6. 判定 ─────────────────────────────────────────────────
+            if (problems.length > 0) {
+              core.warning('校验未通过：' + problems.join(' / '));
+              if (!has('invalid')) {
+                await tag(['invalid']);
+                await say([
+                  '## ❌ 岗位发布失败',
+                  '',
+                  '本条 Issue 未通过自动校验，**已自动关闭**，不会出现在岗位板上。',
+                  '',
+                  '**需要修正：**',
+                  ...problems.map(p => `- ${p}`),
+                  '',
+                  '---',
+                  '**修正方式**：直接编辑本条 Issue 补齐内容（字段结构见 [ISSUE_RULES.md](https://github.com/' + owner + '/' + repo + '/blob/main/ISSUE_RULES.md)），保存后会自动重新校验；通过则移除 `invalid`、恢复 open 并加入岗位板。',
+                  '',
+                  '<sub>由 issue-guard 自动发出 · 规则：ISSUE_RULES.md</sub>'
+                ].join('\n'));
+              }
+              if (issue.state === 'open') await setState('closed', 'not_planned');
+              return;
+            }
+
+            // ── 7. 通过 ────────────────────────────────────────────────
+            const dirLabels = DIR_MAP.filter(([, re]) => re.test(dir)).map(([l]) => l);
+            await tag(['job-posting', ...dirLabels]);
+            await untag('invalid');
+            await untag('unauthorized');
+            if (issue.state === 'closed') await setState('open', 'reopened');
+
+            if (!has('job-posting')) {
+              await say([
+                '## ✅ 岗位发布成功',
+                '',
+                `已通过校验，分类：${dirLabels.map(d => '`' + d + '`').join(' ') || '`job-posting`'}`,
+                '',
+                '- 岗位已出现在 [岗位板](https://github.com/' + owner + '/' + repo + '#readme)',
+                '- 岗位招满/下线后直接删除本 Issue（`gh issue delete <编号> --yes`），不保留存档',
+                '',
+                '<sub>由 issue-guard 自动发出</sub>'
+              ].join('\n'));
+            }

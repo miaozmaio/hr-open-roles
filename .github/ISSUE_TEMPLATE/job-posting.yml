@@ -1,0 +1,99 @@
+name: 岗位发布 (Job Posting)
+description: Rose Zhang 专用 —— 发布一个真实在招岗位（提交后自动校验，合规才会出现在岗位板）
+title: "[方向] 岗位名称 — 公司（城市）"
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### ⚠️ 发布权限
+        本模板**仅限仓库 owner @miaozmaio 使用**。其他人提交的 Issue 会被自动关闭并锁定。
+        规则详见 [ISSUE_RULES.md](../blob/main/ISSUE_RULES.md)。9 个字段全部必填，缺一即「发布失败」。
+
+  - type: input
+    id: job-title
+    attributes:
+      label: 岗位名称
+      description: 带级别 / 团队，例如 `C++ Trading Developer, Quant Trading Team`
+      placeholder: Quantitative Developer | Pricing | Python
+    validations:
+      required: true
+
+  - type: input
+    id: company
+    attributes:
+      label: 公司
+      placeholder: 某量化基金
+    validations:
+      required: true
+
+  - type: dropdown
+    id: direction
+    attributes:
+      label: 招聘方向
+      description: 招聘方向（当前只收量化），决定自动打哪个标签
+      multiple: true
+      options:
+        - 量化
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: 工作地点
+      description: 城市 + 是否 on-site / hybrid / remote
+      placeholder: 中国香港 · 全职 on-site
+    validations:
+      required: true
+
+  - type: input
+    id: salary
+    attributes:
+      label: 薪资范围
+      description: 不公开就写「面议」并附一句说明
+      placeholder: USD 154,000 – 181,000 / 年
+    validations:
+      required: true
+
+  - type: textarea
+    id: duties
+    attributes:
+      label: 岗位职责
+      description: 每条以 `-` 开头，逐条列出
+      value: |
+        - 
+        - 
+        - 
+    validations:
+      required: true
+
+  - type: textarea
+    id: requirements
+    attributes:
+      label: 任职要求
+      description: 每条以 `-` 开头，逐条列出
+      value: |
+        - 
+        - 
+        - 
+    validations:
+      required: true
+
+  - type: input
+    id: detail
+    attributes:
+      label: 职位详情
+      description: 写清团队/业务、职级、核心职责与关键要求即可，不必附链接
+      placeholder: 期权做市团队，负责定价与风控，3 年以上 C++ 低延迟经验
+    validations:
+      required: true
+
+  - type: input
+    id: apply
+    attributes:
+      label: 投递方式
+      description: 例如「在本 Issue 留言，我会跟进」
+      value: 在本 Issue 下留言（中英文都行），或按职位详情里的方式联系，我会跟进。
+    validations:
+      required: true

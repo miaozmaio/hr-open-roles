@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🧑‍💼 想自荐 / 推荐岗位
+    url: https://github.com/zhangmiao067/zhangmiao067/issues/new
+    about: 本仓库只允许 Rose 发布岗位。求职、自荐、推荐岗位请到我的主页仓库开 Issue。
+  - name: 📋 岗位发布规则
+    url: https://github.com/zhangmiao067/hr-open-roles/blob/main/ISSUE_RULES.md
+    about: 发布格式、校验规则、失败原因说明
